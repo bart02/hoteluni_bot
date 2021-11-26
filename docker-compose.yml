@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: dockerfile
-
+    restart: always
     env_file:
       - .env
     volumes:
