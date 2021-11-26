@@ -1,5 +1,6 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+from core.configs import consts
 from core.reply_markups.callbacks import *
 from core.strings import LANGUAGE_MAPPING
 
@@ -18,7 +19,7 @@ campus_numbers = InlineKeyboardMarkup(row_width=2)
 campus_numbers.add(
     *list(
         InlineKeyboardButton(str(i), callback_data=choose_campus_number.new(number=i))
-        for i in range(1, 5)
+        for i in consts.base_dates_campus_cleaning.keys()
     )
 )
 

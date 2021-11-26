@@ -117,7 +117,7 @@ async def schedule_command_handler(msg: types.Message):
         _("schedule_command_text"),
     ]
 
-    for base_dates in consts.base_dates_campus_cleaning.values():
+    for campus, base_dates in consts.base_dates_campus_cleaning.items():
         days_left = consts.cleaning_interval
         for base_date in base_dates:
             if base_date:
@@ -131,14 +131,14 @@ async def schedule_command_handler(msg: types.Message):
                 )
 
         next_cleaning = now + datetime.timedelta(days=days_left)
-        next_cleaning_dates.append((next_cleaning.strftime("%d.%m.%Y (%A)"), days_left))
+        next_cleaning_dates.append((campus, next_cleaning.strftime("%d.%m.%Y (%A)"), days_left))
 
     text.extend(
         [
             _("scheduled_cleaning").format(
-                campus_number=index + 1, date=date, days_left=days_left
+                campus_number=campus, date=date, days_left=days_left
             )
-            for (index, (date, days_left)) in enumerate(next_cleaning_dates)
+            for campus, date, days_left in next_cleaning_dates
         ]
     )
     await bot.send_message(msg.chat.id, "\n".join(map(str, text)))
@@ -262,10 +262,8 @@ async def personal_reminder_about_cleaning(
 
 
 def set_cleaning_reminder(
-    chat_id: int, campus_number: int, time: datetime.time, is_day_before: bool
+    chat_id: int, campus_number: str, time: datetime.time, is_day_before: bool
 ):
-    if not isinstance(campus_number, int):
-        campus_number = int(campus_number)
     for i in range(0, 4):
         base_data = consts.base_dates_campus_cleaning[campus_number][i]
         if base_data:
@@ -331,7 +329,7 @@ async def set_cleaning_reminder_time_cb_handler(
 
 def _get_existing_reminder_at_the_day_of_cleaning(user_id) -> Set[str]:
     result = set()
-    for campus in range(1, 5):
+    for campus in consts.base_dates_campus_cleaning.keys():
         for ind in range(0, 4):
             if scheduler.get_job(
                 consts.job_id_format.format(
@@ -344,7 +342,7 @@ def _get_existing_reminder_at_the_day_of_cleaning(user_id) -> Set[str]:
 
 def _get_existing_reminder_day_before_the_cleaning(user_id) -> Set[str]:
     result = set()
-    for campus in range(1, 5):
+    for campus in consts.base_dates_campus_cleaning.keys():
         for ind in range(0, 4):
             if scheduler.get_job(
                 consts.job_id_format.format(
@@ -434,7 +432,7 @@ async def off_cleaning_reminder_cb_handler(
     async with state.proxy() as proxy:
         is_day_before = bool(proxy.get("is_day_before"))
 
-    campus = int(callback_data["number"])
+    campus = callback_data["number"]
     for i in range(0, 4):
         if consts.base_dates_campus_cleaning[campus][i]:
             scheduler.remove_job(
@@ -452,12 +450,11 @@ async def off_cleaning_reminder_cb_handler(
     await state.finish()
 
 
-@decorators.admin
 @dp.message_handler(commands=["send_to_everyone"], state="*")
 async def send_to_everyone_command_handler(msg: types.Message):
-    #NOTE: i am not sure where it works
-    await bot.send_message(msg.chat.id, _("mailing_everyone"))
-    await MailingEveryoneDialog.first()
+    if str(msg.chat.id) in telegram.ADMIN_IDS:
+        await bot.send_message(msg.chat.id, _("mailing_everyone"))
+        await MailingEveryoneDialog.first()
 
 
 @dp.message_handler(state=MailingEveryoneDialog.enter_message)
@@ -468,14 +465,20 @@ async def mailing_everyone_handler(msg: types.Message, state: FSMContext):
 
 
 async def send_to_everyone(txt):
-    async for u in user_model.User.find({}).raw_cursor:
+    jobs = map(lambda x: x.id.split(':'), scheduler.get_jobs())
+    reminders = filter(lambda x: x[0] == 'cleaning_reminder', jobs)
+    ids = set(map(lambda x: x[1], reminders))
+    # try:
+    for u in ids:
         try:
-            chat_id = u.get("chat_id")
+            chat_id = u
             if chat_id:
                 await bot.send_message(chat_id, txt)
         except TelegramAPIError:
             pass
         await asyncio.sleep(0.5)
+    # except TypeError:
+    #     raise Exception(str(ids))
 
 
 def main():
